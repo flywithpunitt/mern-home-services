@@ -24,6 +24,10 @@ app.get("/", (req, res) => {
 });
 
 
+const providerRoutes = require("./routes/providerRoutes");
+app.use("/api/providers", providerRoutes);
+
+
 // Routes
 app.use("/api/auth", require("./routes/authRoutes")); // Auth Routes
 app.use("/api/services", require("./routes/serviceRoutes")); // Service Routes
