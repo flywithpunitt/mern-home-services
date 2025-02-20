@@ -18,6 +18,12 @@ mongoose.connect(process.env.MONGO_URI, {
 .then(() => console.log("✅ MongoDB Connected"))
 .catch((err) => console.error("❌ DB Connection Error:", err));
 
+
+app.get("/", (req, res) => {
+  res.send("Backend is running!");
+});
+
+
 // Routes
 app.use("/api/auth", require("./routes/authRoutes")); // Auth Routes
 app.use("/api/services", require("./routes/serviceRoutes")); // Service Routes
