@@ -3,7 +3,6 @@ const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const axios = require("axios");
 
-
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // Google Client ID
 
 // Generate JWT Token
