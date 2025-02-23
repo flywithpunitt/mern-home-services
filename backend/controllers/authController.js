@@ -76,33 +76,34 @@ const loginUser = async (req, res) => {
 const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
-    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-    console.log("Verifying Google Token...");
+    console.log("🔹 Received Google Token:", token);
 
+    // Verify Google token
     const ticket = await client.verifyIdToken({
       idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID, // Ensure correct audience
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
 
-    if (!ticket) {
-      console.log("Invalid token received");
+    // Extract user info
+    const payload = ticket.getPayload();
+    console.log("🔹 Google Payload:", payload);
+
+    if (!payload) {
       return res.status(400).json({ message: "Invalid Google token" });
     }
 
-    const payload = ticket.getPayload();
-    console.log("Google Payload:", payload); // Debug log
+    const { email, name, sub: googleId } = payload;
 
-    const { name, email, sub: googleId } = payload;
-
+    // Check if user already exists
     let user = await User.findOne({ email });
 
     if (!user) {
-      console.log("Creating new user...");
+      console.log("🔹 Creating new user from Google login...");
       user = await User.create({
         name,
         email,
-        password: "google-auth",
+        password: "google-auth", // Dummy password
       });
     }
 
@@ -119,10 +120,12 @@ const googleLogin = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Google Login Error:", error);
+    console.error("❌ Google Login Error:", error);
     res.status(500).json({ message: "Google authentication failed", error });
   }
 };
+
+module.exports = { googleLogin };
 
 
 // @desc Get logged-in user profile
