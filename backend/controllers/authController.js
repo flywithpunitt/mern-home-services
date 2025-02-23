@@ -73,8 +73,6 @@ const loginUser = async (req, res) => {
 // @desc Google Login
 // @route POST /api/auth/google-login
 // @access Public
-const { OAuth2Client } = require("google-auth-library");
-
 const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
