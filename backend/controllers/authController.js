@@ -73,13 +73,19 @@ const loginUser = async (req, res) => {
 // @desc Google Login
 // @route POST /api/auth/google-login
 // @access Public
+
 const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
-
     console.log("🔹 Received Google Token:", token);
 
-    // Verify Google token
+    // Fetch Google public keys
+    const googleCerts = await axios.get("https://www.googleapis.com/oauth2/v3/certs");
+    const certs = googleCerts.data.keys;
+
+    console.log("🔹 Google Public Keys Fetched:", certs);
+
+    // Verify Google ID Token
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -124,8 +130,6 @@ const googleLogin = async (req, res) => {
     res.status(500).json({ message: "Google authentication failed", error });
   }
 };
-
-module.exports = { googleLogin };
 
 
 // @desc Get logged-in user profile
