@@ -81,18 +81,15 @@ const googleLogin = async (req, res) => {
     console.log("🔹 Received Google Token:", token);
 
     // Fetch Google public keys
-    const googleCerts = await axios.get("https://www.googleapis.com/oauth2/v3/certs");
-    const certs = googleCerts.data.keys;
+    const { data } = await axios.get("https://www.googleapis.com/oauth2/v3/certs");
 
-    console.log("🔹 Google Public Keys Fetched:", certs);
-
-    // Verify Google ID Token
+    // Verify Google ID Token dynamically with the correct key
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
-    // Extract user info
+    // Extract user details
     const payload = ticket.getPayload();
     console.log("🔹 Google Payload:", payload);
 
@@ -102,7 +99,7 @@ const googleLogin = async (req, res) => {
 
     const { email, name, sub: googleId } = payload;
 
-    // Check if user already exists
+    // Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
@@ -132,6 +129,7 @@ const googleLogin = async (req, res) => {
   }
 };
 
+module.exports = { googleLogin };
 
 // @desc Get logged-in user profile
 // @route GET /api/auth/profile
