@@ -1,9 +1,6 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
-const { OAuth2Client } = require("google-auth-library");
-const axios = require("axios");
-
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // Google Client ID
+const admin = require("../config/firebaseAdmin"); // Firebase Admin SDK
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -14,7 +11,7 @@ const generateToken = (id) => {
 // @route POST /api/auth/register
 // @access Public
 const registerUser = async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, businessName, servicesOffered } = req.body;
 
   try {
     const userExists = await User.findOne({ email });
@@ -61,6 +58,8 @@ const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        businessName: user.businessName,
+        servicesOffered: user.servicesOffered,
         token: generateToken(user.id),
       });
     } else {
@@ -74,64 +73,43 @@ const loginUser = async (req, res) => {
 // @desc Google Login
 // @route POST /api/auth/google-login
 // @access Public
-
 const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
-    console.log("🔹 Received Google Token:", token);
 
-    // Fetch Google public keys
-    const { data } = await axios.get("https://www.googleapis.com/oauth2/v3/certs");
-
-    // Verify Google ID Token dynamically with the correct key
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    // Extract user details
-    const payload = ticket.getPayload();
-    console.log("🔹 Google Payload:", payload);
-
-    if (!payload) {
-      return res.status(400).json({ message: "Invalid Google token" });
-    }
-
-    const { email, name, sub: googleId } = payload;
+    // Verify Firebase ID Token
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const { name, email, picture, uid } = decodedToken;
 
     // Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
-      console.log("🔹 Creating new user from Google login...");
       user = await User.create({
         name,
         email,
-        password: "google-auth", // Dummy password
+        googleId: uid,
+        avatar: picture,
+        role: "user", // Default role
       });
     }
 
-    // Generate JWT Token
-    const authToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
-      expiresIn: "30d",
-    });
-
+    // Generate JWT Token for authentication
     res.json({
-      token: authToken,
+      _id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role || "user",
+      role: user.role,
+      businessName: user.businessName,
+      servicesOffered: user.servicesOffered,
+      token: generateToken(user.id),
     });
-
   } catch (error) {
-    console.error("❌ Google Login Error:", error);
-    res.status(500).json({ message: "Google authentication failed", error });
+    res.status(401).json({ message: "Google authentication failed", error });
   }
 };
 
-module.exports = { googleLogin };
-
-// @desc Get logged-in user profile
+// @desc Get user profile
 // @route GET /api/auth/profile
 // @access Private
 const getUserProfile = async (req, res) => {
@@ -153,8 +131,8 @@ const getUserProfile = async (req, res) => {
 };
 
 // @desc Get provider profile
-// @route GET /api/auth/provider-profile/:id
-// @access Private
+// @route GET /api/auth/provider/:id
+// @access Public
 const getProviderProfile = async (req, res) => {
   try {
     const provider = await User.findById(req.params.id).select("-password");
