@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Search, MapPin, Clock, ChevronLeft, Star, XCircle, Grid } from 'lucide-react';
+import { Search, MapPin, Clock, ChevronLeft, Star, XCircle, Grid,Home,Calendar,Settings  } from 'lucide-react';
 import axios from 'axios';
+import UserBooking from './UserBooking';
+
 
 // Base API URL
 const API_BASE_URL = 'https://mern-home-services.onrender.com/api';
@@ -29,6 +31,13 @@ const SuccessAlert = ({ message, onClose }) => (
   </div>
 );
 
+// Loading Spinner Component
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center p-4">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+  </div>
+);
+
 const UserDashboard = () => {
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
@@ -51,7 +60,7 @@ const UserDashboard = () => {
     if (!mapRef.current) return;
 
     const mapInstance = L.map(mapRef.current, {
-      center: [28.6139, 77.2090],
+      center: [28.6139, 77.2090], // Delhi coordinates
       zoom: 12,
       zoomControl: true,
       attributionControl: false
@@ -88,6 +97,7 @@ const UserDashboard = () => {
   // Fetch Services
   useEffect(() => {
     const fetchServices = async () => {
+      setIsLoading(true);
       try {
         const response = await axios.get(`${API_BASE_URL}/services`, {
           headers: getAuthHeader()
@@ -112,27 +122,8 @@ const UserDashboard = () => {
       } catch (error) {
         console.error('Error fetching services:', error);
         setError('Failed to fetch services. Please try again later.');
-        // Fallback to mock data
-        const mockServices = [
-          {
-            _id: '1',
-            name: 'House Cleaning',
-            category: 'cleaning',
-            description: 'Professional house cleaning service',
-            price: 299,
-            rating: { average: 4.5, count: 120 }
-          },
-          {
-            _id: '2',
-            name: 'Plumbing Service',
-            category: 'plumbing',
-            description: 'Expert plumbing solutions',
-            price: 399,
-            rating: { average: 4.3, count: 85 }
-          }
-        ];
-        setServices(mockServices);
-        setFilteredServices(mockServices);
+      } finally {
+        setIsLoading(false);
       }
     };
   
@@ -172,7 +163,7 @@ const UserDashboard = () => {
 
   // Fetch Providers
   useEffect(() => {
-    const fetchProviders = async () => {
+    const loadProviders = async () => {
       if (selectedService && selectedLocation) {
         setIsLoading(true);
         try {
@@ -181,96 +172,79 @@ const UserDashboard = () => {
             params: {
               serviceId: selectedService._id,
               latitude: selectedLocation.coordinates[0],
-              longitude: selectedLocation.coordinates[1]
+              longitude: selectedLocation.coordinates[1],
+              radius: 10
             }
           });
           
           const processedProviders = (Array.isArray(response.data) ? response.data : response.data.providers || [])
             .map(provider => ({
               _id: provider._id || provider.id,
-              name: provider.name,
-              experience: provider.experience,
-              rating: provider.rating || 0,
-              price: provider.price,
-              availability: provider.availability
+              name: provider.name || 'Unknown Provider',
+              experience: provider.experience || '0 years',
+              rating: Number(provider.rating) || 0,
+              price: Number(provider.price) || 0,
+              availability: Boolean(provider.availability)
             }));
 
+          if (processedProviders.length === 0) {
+            setError('No providers available in your area for this service.');
+          }
+          
           setProviders(processedProviders);
-          setError(null);
         } catch (error) {
           console.error('Error fetching providers:', error);
           setError('Failed to fetch providers. Please try again.');
-          // Fallback to mock data
-          const mockProviders = [
-            {
-              _id: '1',
-              name: 'Punit',
-              experience: '5 years',
-              rating: 4.5,
-              price: 500,
-              availability: true
-            },
-            {
-              _id: '2',
-              name: 'Neyaz',
-              experience: '3 years',
-              rating: 4.2,
-              price: 450,
-              availability: true
-            }
-          ];
-          setProviders(mockProviders);
         } finally {
           setIsLoading(false);
         }
       }
     };
 
-    fetchProviders();
+    loadProviders();
   }, [selectedService, selectedLocation]);
 
-  // Handle Booking
   const handleBooking = async () => {
+    if (!selectedService || !selectedProvider || !selectedLocation) {
+      setError('Please select all required booking details');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
     try {
-      setIsLoading(true);
-      setError(null);
+      // Format date to YYYY-MM-DD
+      const formattedDate = new Date().toISOString().split('T')[0];
       
-      // Create the booking
-      const bookingResponse = await axios.post(`${API_BASE_URL}/bookings`, {
+      const bookingData = {
         serviceId: selectedService._id,
         providerId: selectedProvider._id,
-        location: {
-          name: selectedLocation.name,
-          coordinates: selectedLocation.coordinates
-        }
-      }, {
-        headers: getAuthHeader()
-      });
+        date: formattedDate
+      };
 
-      // Send notification to provider
-      await axios.post(`${API_BASE_URL}/notifications/provider`, {
-        providerId: selectedProvider._id,
-        bookingId: bookingResponse.data._id,
-        type: 'NEW_BOOKING',
-        message: `New booking request for ${selectedService.name}`,
-        details: {
-          serviceName: selectedService.name,
-          customerLocation: selectedLocation.name,
-          bookingTime: new Date().toISOString(),
-          price: selectedProvider.price
-        }
-      }, {
-        headers: getAuthHeader()
-      });
+      // Log the data we're sending
+      console.log('Trying to create booking with data:', bookingData);
+      console.log('Auth header:', getAuthHeader());
 
-      // Show success message
-      setSuccessMessage(`Booking confirmed successfully! Provider ${selectedProvider.name} has been notified and will contact you shortly.`);
-      setTimeout(() => setSuccessMessage(null), 5000);
-      
-      setStep('dashboard');
+      const response = await axios.post(
+        `${API_BASE_URL}/bookings`,
+        bookingData,
+        { headers: getAuthHeader() }
+      );
+
+      console.log('Booking response:', response.data);
+
+      setSuccessMessage('Booking confirmed successfully!');
+      setTimeout(() => {
+        setSuccessMessage(null);
+        setStep('dashboard');
+      }, 3000);
     } catch (error) {
       console.error('Error in booking process:', error);
-      setError(error.response?.data?.message || 'Failed to create booking. Please try again.');
+      console.error('Error response data:', error.response?.data);
+      console.error('Attempted booking data:', error.config?.data);
+      setError(`Failed to create booking: ${error.response?.data?.message || error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -314,13 +288,6 @@ const UserDashboard = () => {
     }
   };
 
-  // Loading Component
-  const LoadingSpinner = () => (
-    <div className="flex justify-center items-center p-4">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-    </div>
-  );
-
   // Render Dashboard
   const renderDashboard = () => (
     <div className="h-full flex flex-col justify-center items-center p-6">
@@ -351,42 +318,49 @@ const UserDashboard = () => {
           <ChevronLeft className="h-6 w-6" />
         </button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredServices.map(service => (
-          <div 
-            key={service._id}
-            onClick={() => {
-              setSelectedService(service);
-              setStep('location');
-            }}
-            className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer"
-          >
-            <div className="flex items-start gap-4">
-              <div className="text-3xl">
-                {getServiceIcon(service.category)}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800">{service.name}</h3>
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">
-                      {service.rating?.average || 0}
+
+      {error && <ErrorAlert message={error} />}
+      
+      {isLoading ? (
+        <LoadingSpinner />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredServices.map(service => (
+            <div 
+              key={service._id}
+              onClick={() => {
+                setSelectedService(service);
+                setStep('location');
+              }}
+              className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer"
+            >
+              <div className="flex items-start gap-4">
+                <div className="text-3xl">
+                  {getServiceIcon(service.category)}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-800">{service.name}</h3>
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="text-sm text-gray-600">
+                        {service.rating?.average || 0}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">{service.description}</p>
+                  <div className="flex items-center gap-1 mt-2">
+                    <Clock className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm text-blue-500">
+                      Starting from ₹{service.price}
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">{service.description}</p>
-                <div className="flex items-center gap-1 mt-2">
-                  <Clock className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm text-blue-500">
-                    Starting from ₹{service.price}
-                  </span>
-                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -488,7 +462,7 @@ const UserDashboard = () => {
                       <span className="text-sm text-gray-600">{provider.rating}</span>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-500 mt-1">{provider.experience} years experience</p>
+                  <p className="text-sm text-gray-500 mt-1">{provider.experience} experience</p>
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm text-blue-500">₹{provider.price}</span>
                     <span className={`text-sm px-2 py-1 rounded ${
@@ -538,7 +512,7 @@ const UserDashboard = () => {
             <div className="text-3xl mr-4">👨‍🔧</div>
             <div>
               <p className="font-medium">{selectedProvider.name}</p>
-              <p className="text-sm text-gray-600">{selectedProvider.experience} years experience</p>
+              <p className="text-sm text-gray-600">{selectedProvider.experience} experience</p>
               <div className="flex items-center gap-2 mt-1">
                 <Star className="h-4 w-4 text-yellow-400 fill-current" />
                 <span className="text-sm text-gray-600">{selectedProvider.rating} rating</span>
@@ -578,7 +552,33 @@ const UserDashboard = () => {
   );
 
   return (
+    
     <div className="h-screen flex flex-col">
+      {/* User Dashboard Navbar */}
+<div className="bg-white shadow-md py-4 px-6 flex justify-between items-center mt-16">
+  <h2 className="text-2xl font-bold text-gray-800"></h2>
+  <div className="space-x-4">
+    <button
+      className={`py-2 px-4 rounded-md ${step === "dashboard" ? "bg-blue-600 text-white" : "bg-gray-300"}`}
+      onClick={() => setStep("dashboard")}
+    >
+      <Home className="w-5 h-5 inline-block mr-2" /> Dashboard
+    </button>
+    <button
+      className={`py-2 px-4 rounded-md ${step === "bookings" ? "bg-blue-600 text-white" : "bg-gray-300"}`}
+      onClick={() => setStep("bookings")}
+    >
+      <Calendar className="w-5 h-5 inline-block mr-2" /> Bookings
+    </button>
+    <button
+      className={`py-2 px-4 rounded-md ${step === "settings" ? "bg-blue-600 text-white" : "bg-gray-300"}`}
+      onClick={() => setStep("settings")}
+    >
+      <Settings className="w-5 h-5 inline-block mr-2" /> Settings
+    </button>
+  </div>
+</div>
+
       <div 
         ref={mapRef}
         id="dashboard-map" 
@@ -590,6 +590,7 @@ const UserDashboard = () => {
         {step === 'location' && renderLocationSearch()}
         {step === 'providers' && renderProviders()}
         {step === 'booking' && renderBooking()}
+        {step === "bookings" && <UserBooking />}
       </div>
       {successMessage && (
         <SuccessAlert 

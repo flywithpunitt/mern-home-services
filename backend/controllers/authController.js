@@ -1,5 +1,8 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // Google Client ID
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -10,7 +13,7 @@ const generateToken = (id) => {
 // @route POST /api/auth/register
 // @access Public
 const registerUser = async (req, res) => {
-  const { name, email, password, role, businessName, servicesOffered } = req.body;
+  const { name, email, password, role } = req.body;
 
   try {
     const userExists = await User.findOne({ email });
@@ -57,8 +60,6 @@ const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        businessName: user.businessName,
-        servicesOffered: user.servicesOffered,
         token: generateToken(user.id),
       });
     } else {
@@ -69,7 +70,49 @@ const loginUser = async (req, res) => {
   }
 };
 
+// @desc Google Login
+// @route POST /api/auth/google-login
+// @access Public
+const googleLogin = async (req, res) => {
+  const { tokenId } = req.body;
 
+  try {
+    // Verify the Google token
+    const ticket = await client.verifyIdToken({
+      idToken: tokenId,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const { email, name, sub } = ticket.getPayload();
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // If user doesn't exist, create a new user
+      user = await User.create({
+        name,
+        email,
+        password: sub, // Google users won't have a password, so we store Google ID
+        role: "user", // Default role
+      });
+    }
+
+    res.json({
+      _id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      token: generateToken(user.id),
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({ message: "Google authentication failed", error });
+  }
+};
+
+// @desc Get logged-in user profile
+// @route GET /api/auth/profile
+// @access Private
 const getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
@@ -88,6 +131,9 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+// @desc Get provider profile
+// @route GET /api/auth/provider-profile/:id
+// @access Private
 const getProviderProfile = async (req, res) => {
   try {
     const provider = await User.findById(req.params.id).select("-password");
@@ -102,6 +148,4 @@ const getProviderProfile = async (req, res) => {
   }
 };
 
-
-
-module.exports = { registerUser, loginUser, getUserProfile, getProviderProfile };
+module.exports = { registerUser, loginUser, googleLogin, getUserProfile, getProviderProfile };
