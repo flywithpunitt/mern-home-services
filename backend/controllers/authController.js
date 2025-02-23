@@ -74,41 +74,54 @@ const loginUser = async (req, res) => {
 // @route POST /api/auth/google-login
 // @access Public
 const googleLogin = async (req, res) => {
-  const { tokenId } = req.body;
-
   try {
-    // Verify the Google token
+    const { token } = req.body;
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+    // Verify Google token
     const ticket = await client.verifyIdToken({
-      idToken: tokenId,
+      idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
-    const { email, name, sub } = ticket.getPayload();
+    if (!ticket) {
+      return res.status(400).json({ message: "Invalid Google token" });
+    }
 
+    const { name, email, sub: googleId } = ticket.getPayload();
+
+    // Log for debugging
+    console.log("Google User Verified:", { name, email, googleId });
+
+    // Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
-      // If user doesn't exist, create a new user
       user = await User.create({
         name,
         email,
-        password: sub, // Google users won't have a password, so we store Google ID
-        role: "user", // Default role
+        password: "google-auth", // Placeholder password
       });
     }
 
+    // Generate JWT Token
+    const authToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
+    });
+
     res.json({
-      _id: user.id,
+      token: authToken,
       name: user.name,
       email: user.email,
-      role: user.role,
-      token: generateToken(user.id),
+      role: user.role || "user",
     });
+
   } catch (error) {
-    console.error("Google login error:", error);
+    console.error("Google Login Error:", error); // Log actual error
     res.status(500).json({ message: "Google authentication failed", error });
   }
 };
+
 
 // @desc Get logged-in user profile
 // @route GET /api/auth/profile
